@@ -1,0 +1,103 @@
+
+Profiled data has been loaded.
+ModelConfig(num_layers=10, hidden_size=4096, sequence_length=1024, vocab_size=51200, attention_head_size=None, model_name='GPT')
+{'hidden_size': 4096, 'sequence_length': 1024, 'num_layers': 10, 'vocab_size': 51200, 'attention_head_size': None, 'input_params': 393216000.0, 'output_params': 393220096.0, 'transformer_params': 202383360.0}
+
+UniformPlan(dp=4, pp=1, tp=1, mbs=1, gbs=128)
+time: 9517.718996462614, memory(stage): ['51.88GB']
+
+UniformPlan(dp=4, pp=1, tp=1, mbs=2, gbs=128)
+time: 9415.971483645231, memory(stage): ['59.9GB']
+
+UniformPlan(dp=4, pp=1, tp=1, mbs=4, gbs=128)
+time: 9275.447763857634, memory(stage): ['83.24GB']
+KeyError: 'key(tp1_bs8) not found in profile_data'
+KeyError: 'key(tp1_bs16) not found in profile_data'
+KeyError: 'key(tp1_bs32) not found in profile_data'
+
+UniformPlan(dp=2, pp=1, tp=2, mbs=1, gbs=128)
+time: 10837.296363332996, memory(stage): ['26.92GB']
+
+UniformPlan(dp=2, pp=1, tp=2, mbs=2, gbs=128)
+time: 10105.692359426746, memory(stage): ['33.18GB']
+
+UniformPlan(dp=2, pp=1, tp=2, mbs=4, gbs=128)
+time: 9848.791953542957, memory(stage): ['47.3GB']
+KeyError: 'key(tp2_bs8) not found in profile_data'
+KeyError: 'key(tp2_bs16) not found in profile_data'
+KeyError: 'key(tp2_bs32) not found in profile_data'
+KeyError: 'key(tp2_bs64) not found in profile_data'
+
+UniformPlan(dp=1, pp=1, tp=4, mbs=1, gbs=128)
+time: 12931.192636489868, memory(stage): ['14.11GB']
+
+UniformPlan(dp=1, pp=1, tp=4, mbs=2, gbs=128)
+time: 11590.808725357056, memory(stage): ['18.32GB']
+
+UniformPlan(dp=1, pp=1, tp=4, mbs=4, gbs=128)
+time: 10772.411966323853, memory(stage): ['24.84GB']
+KeyError: 'key(tp4_bs8) not found in profile_data'
+KeyError: 'key(tp4_bs16) not found in profile_data'
+KeyError: 'key(tp4_bs32) not found in profile_data'
+KeyError: 'key(tp4_bs64) not found in profile_data'
+KeyError: 'key(tp4_bs128) not found in profile_data'
+
+UniformPlan(dp=2, pp=2, tp=1, mbs=1, gbs=128)
+time: 11395.70850994276, memory(stage): ['23.83GB', '28.04GB']
+
+UniformPlan(dp=2, pp=2, tp=1, mbs=2, gbs=128)
+time: 11327.997805636862, memory(stage): ['26.79GB', '33.11GB']
+
+UniformPlan(dp=2, pp=2, tp=1, mbs=4, gbs=128)
+time: 11355.722320639568, memory(stage): ['33.31GB', '49.92GB']
+KeyError: 'key(tp1_bs8) not found in profile_data'
+KeyError: 'key(tp1_bs16) not found in profile_data'
+KeyError: 'key(tp1_bs32) not found in profile_data'
+KeyError: 'key(tp1_bs64) not found in profile_data'
+
+UniformPlan(dp=1, pp=2, tp=2, mbs=1, gbs=128)
+time: 12995.9228806703, memory(stage): ['12.55GB', '14.37GB']
+
+UniformPlan(dp=1, pp=2, tp=2, mbs=2, gbs=128)
+time: 11976.796351474264, memory(stage): ['14.36GB', '18.81GB']
+
+UniformPlan(dp=1, pp=2, tp=2, mbs=4, gbs=128)
+time: 11753.624794089275, memory(stage): ['19.87GB', '27.44GB']
+KeyError: 'key(tp2_bs8) not found in profile_data'
+KeyError: 'key(tp2_bs16) not found in profile_data'
+KeyError: 'key(tp2_bs32) not found in profile_data'
+KeyError: 'key(tp2_bs64) not found in profile_data'
+KeyError: 'key(tp2_bs128) not found in profile_data'
+
+UniformPlan(dp=1, pp=4, tp=1, mbs=1, gbs=128)
+time: 15097.828761639803, memory(stage): ['15.73GB', '8.1GB', '8.1GB', '19.95GB']
+
+UniformPlan(dp=1, pp=4, tp=1, mbs=2, gbs=128)
+time: 14922.975714807924, memory(stage): ['17.34GB', '9.45GB', '9.45GB', '23.66GB']
+
+UniformPlan(dp=1, pp=4, tp=1, mbs=4, gbs=128)
+time: 14937.066141377325, memory(stage): ['21.09GB', '12.22GB', '12.22GB', '37.7GB']
+KeyError: 'key(tp1_bs8) not found in profile_data'
+KeyError: 'key(tp1_bs16) not found in profile_data'
+KeyError: 'key(tp1_bs32) not found in profile_data'
+KeyError: 'key(tp1_bs64) not found in profile_data'
+KeyError: 'key(tp1_bs128) not found in profile_data'
+rank, cost, plan
+1, 9275.447763857634, UniformPlan(dp=4, pp=1, tp=1, mbs=4, gbs=128)
+2, 9415.971483645231, UniformPlan(dp=4, pp=1, tp=1, mbs=2, gbs=128)
+3, 9517.718996462614, UniformPlan(dp=4, pp=1, tp=1, mbs=1, gbs=128)
+4, 9848.791953542957, UniformPlan(dp=2, pp=1, tp=2, mbs=4, gbs=128)
+5, 10105.692359426746, UniformPlan(dp=2, pp=1, tp=2, mbs=2, gbs=128)
+6, 10772.411966323853, UniformPlan(dp=1, pp=1, tp=4, mbs=4, gbs=128)
+7, 10837.296363332996, UniformPlan(dp=2, pp=1, tp=2, mbs=1, gbs=128)
+8, 11327.997805636862, UniformPlan(dp=2, pp=2, tp=1, mbs=2, gbs=128)
+9, 11355.722320639568, UniformPlan(dp=2, pp=2, tp=1, mbs=4, gbs=128)
+10, 11395.70850994276, UniformPlan(dp=2, pp=2, tp=1, mbs=1, gbs=128)
+11, 11590.808725357056, UniformPlan(dp=1, pp=1, tp=4, mbs=2, gbs=128)
+12, 11753.624794089275, UniformPlan(dp=1, pp=2, tp=2, mbs=4, gbs=128)
+13, 11976.796351474264, UniformPlan(dp=1, pp=2, tp=2, mbs=2, gbs=128)
+14, 12931.192636489868, UniformPlan(dp=1, pp=1, tp=4, mbs=1, gbs=128)
+15, 12995.9228806703, UniformPlan(dp=1, pp=2, tp=2, mbs=1, gbs=128)
+16, 14922.975714807924, UniformPlan(dp=1, pp=4, tp=1, mbs=2, gbs=128)
+17, 14937.066141377325, UniformPlan(dp=1, pp=4, tp=1, mbs=4, gbs=128)
+18, 15097.828761639803, UniformPlan(dp=1, pp=4, tp=1, mbs=1, gbs=128)

@@ -100,7 +100,6 @@ class HomoCostEstimator(CostEstimator):
 
         stage_parameters = []
         model_parameters = self.model_volume.get_parameter_size(tp_deg)
-
         stage_layer_counts = partition_layers_by_stage(self.model_volume.get_num_layers(), pp_deg)
         bs = plan.mbs
         num_mbs = plan.gbs // plan.mbs // plan.dp
@@ -134,7 +133,7 @@ class HomoCostEstimator(CostEstimator):
 
         batch_generate_cost = self._get_batch_generate_cost(num_mbs)
         time_cost = execution_cost + fb_sync_cost + parameter_update_cost + dp_cost + pp_cost + batch_generate_cost
-        stage_memory = [f'{round(cur_memory/1024/1024/1024, 2)}GB' for cur_memory in stage_memory]
+        stage_memory = [f'{round(cur_memory/1024, 2)}GB' for cur_memory in stage_memory]
         return time_cost, stage_memory, oom_detected
 
 

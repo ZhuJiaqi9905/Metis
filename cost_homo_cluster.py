@@ -24,7 +24,7 @@ def cost_homo_cluster(args: argparse.Namespace, gpu_cluster: GPUCluster, cost_es
                                      max_tp=args.max_profiled_tp_degree, max_gbs=args.gbs):
         if plan.gbs != args.gbs:
             continue
-
+        # print(f"{'#'*80}\n {plan}\n{'#'*80}")
         try:
             time_cost, stage_memory_cost, OOM = cost_estimator.get_cost(plan, device_types[0])
             estimate_costs.append((copy(plan), time_cost))
@@ -40,14 +40,16 @@ def cost_homo_cluster(args: argparse.Namespace, gpu_cluster: GPUCluster, cost_es
 if __name__ == "__main__":
     args = parse_args()
     gpu_cluster = GPUCluster(hostfile_path=args.hostfile_path, clusterfile_path=args.clusterfile_path)
-
+    # print(f"{'#'*80}\n {gpu_cluster.__dict__}\n{'#'*80}")
     assert 10 <= gpu_cluster.get_inter_bandwidth(0) <= 500, \
         "intra-bandwidth for NVLink should exist within a range 10GB/s to 500GB/s"
     assert 1 <= gpu_cluster.get_intra_bandwidth(0) <= 50, \
         "inter-bandwidth should exist within a range 1GB/s to 50GB/s"
 
-    data_loader = ProfileDataLoader(profile_dir=args.profile_data_path, runtime_cost_dir=args.evaluation_data_path)
+    # data_loader = ProfileDataLoader(profile_dir=args.profile_data_path, runtime_cost_dir=args.evaluation_data_path)
+    data_loader = ProfileDataLoader(profile_dir=args.profile_data_path)
     profile_data, device_types = data_loader.load_profile_data_all()
+    # print(f"{'#'*80}\n {profile_data}\n{'#'*80}")
     if len(profile_data.keys()) > 0:
         print('\nProfiled data has been loaded.')
 
@@ -59,8 +61,9 @@ if __name__ == "__main__":
                                vocab_size=args.vocab_size,
                                hidden_size=args.hidden_size,
                                attention_head_size=args.attention_head_size)
-
+    # print(model_config)
     model_volume = GPTActivationAndParam(model_config, profile_data['model']['parameters'])
+    # print(model_volume.__dict__)
     cost_estimator = HomoCostEstimator(profile_data, model_config, model_volume, gpu_cluster)
 
     estimate_costs = cost_homo_cluster(args, gpu_cluster, cost_estimator)
