@@ -51,7 +51,7 @@ env_options="
               --log_path=${LOG_PATH}
             "
 
-PROFILE_DATA_PATH="${HOME_DIR}/profile"
+PROFILE_DATA_PATH="${HOME_DIR}/profile_data_samples"
 
 hetspeed_options="
                     --profile_data_path=${PROFILE_DATA_PATH}
@@ -62,7 +62,10 @@ hetspeed_options="
                  "
 
 run_cmd="python3 ../cost_het_cluster.py ${model_options} ${model_specific_options} ${cluster_options} ${hetspeed_options} ${env_options}
-         &> ${LOG_PATH}/${MODEL_NAME}_${MODEL_SIZE}_${current_time}.log"
+         &> ${LOG_PATH}/${MODEL_NAME}_${MODEL_SIZE}_het_${current_time}.log"
+
+# run_cmd="python3 ../cost_het_cluster.py ${model_options} ${model_specific_options} ${cluster_options} ${hetspeed_options} ${env_options}"
+
 
 echo ${run_cmd}
 eval ${run_cmd}

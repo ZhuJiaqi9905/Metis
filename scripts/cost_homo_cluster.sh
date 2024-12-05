@@ -60,7 +60,7 @@ hetspeed_options="
                  "
 
 run_cmd="python3 ../cost_homo_cluster.py ${model_options} ${model_specific_options} ${cluster_options} ${hetspeed_options} ${env_options}
-         &> ${LOG_PATH}/${MODEL_NAME}_${MODEL_SIZE}_${current_time}.log"
+         &> ${LOG_PATH}/${MODEL_NAME}_${MODEL_SIZE}_homo_${current_time}.log"
 
 # run_cmd="python3 ../cost_homo_cluster.py ${model_options} ${model_specific_options} ${cluster_options} ${hetspeed_options} ${env_options}"
 
