@@ -5,7 +5,13 @@ from search_space.utils import permutations
 
 
 def permute(s, max_permute_len):
+    '''
+    做了剪枝的permutation
+    '''
     def find_num_min(m, groups):
+        '''
+        找到groups中第一个不是m的元素的位置
+        '''
         for i, e in enumerate(groups):
             if m != e:
                 return i + 1
@@ -38,6 +44,7 @@ def permute(s, max_permute_len):
                 merged_groups.append(groups[i])
             else:
                 if sum(groups[i]) == min_group_size and sum(groups[i]) == sum(groups[i + 1]):
+                    # merge groups[i] and groups[i + 1]
                     merged_group = tuple(groups[i] + groups[i + 1])
                     merged_groups.append(merged_group)
                 else:
@@ -49,14 +56,17 @@ def permute(s, max_permute_len):
             # we can't reduce anymore
             break
         num_reduce = len(groups) - max_permute_len
-
-    # print("Merged groups:", groups)
     perms = permutations(groups)
     return perms
 
 
 def gen_dgroups_recursive(num_stages: int, num_gpus: int, group_shapes: List):
-    def f(current_sum, stage_idx, curr_sol, prev_shape_idx):
+    '''
+    总共有num_gpus个GPU, 想把他们切分成num_stages个stage。并且每个stage的GPU个数必须在group_shapes中。
+    函数会枚举所有可能的切分的排列。形如[2, 4, 2]和[2, 2, 4]算是同一种切分的排列。
+    dfs 枚举。
+    '''
+    def f(current_sum: int, stage_idx: int, curr_sol, prev_shape_idx: int):
         # filtering
         if group_shapes[-1] * (num_stages - stage_idx) < num_gpus - current_sum:
             # max gpu < total gpu
@@ -82,6 +92,9 @@ def gen_dgroups_recursive(num_stages: int, num_gpus: int, group_shapes: List):
 
 
 def gen_device_group_shapes(num_gpus: int) -> List[int]:
+    '''
+    return [1, 2, 4, 8, ...]
+    '''
     group_shapes = []
     i = 0
     while 2 ** i <= num_gpus:
@@ -93,15 +106,21 @@ def gen_device_group_shapes(num_gpus: int) -> List[int]:
 def gen_dgroups_for_stages_with_variance(num_stages: int, num_gpus: int, group_shapes: List[int], variance: float,
                                          max_permute_len: int) -> List:
     # Key idea 1: Limit the size of device group
-    min_group_stage = max(num_gpus // num_stages, num_stages // num_gpus)
-    min_group_stage *= variance
+    min_group_stage = max(num_gpus // num_stages, num_stages // num_gpus) # 均匀情况下，一个stage有几个GPU。作为每个stage的GPU数量的下界
+    min_group_stage *= variance # 把下界放小。可以取0.5
     group_shapes = [s for s in group_shapes if s >= min_group_stage]
 
     device_groups = []
     for s in gen_dgroups_recursive(num_stages, num_gpus, group_shapes):
-        perm_s = permute(s, max_permute_len)
+        perm_s = permute(s, max_permute_len) # 因为异构情况下，相同的排列（[2, 4, 2]和[2, 2, 4]），由于下面的GPU类型不同，也会成为不同的配置方案。
         for perm in perm_s:
             perm_ss = list(chain(*perm))
             device_groups.append(perm_ss)
-
+    # print(f"device_groups_num: {len(device_groups)}, num_stages: {num_stages}, num_gpus: {num_gpus}")
     return device_groups
+
+if __name__ == "__main__":
+    # device_groups = gen_dgroups_for_stages_with_variance(8, 32, [1, 2, 4, 8, 16, 32], 0, 4)
+    # print(f"device_groups: {device_groups}")
+    for p in permute([1, 1, 2, 4], 2):
+        print(p)

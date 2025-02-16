@@ -12,13 +12,14 @@ if TYPE_CHECKING:
 
 
 class LayerLoadBalancer:
-    def __init__(self, gpu_cluster: GPUCluster, profile_data: Dict, model_config, gbs: int):
+    def __init__(self, gpu_cluster: GPUCluster, profile_data: Dict, model_config, gbs: int, max_bs: int):
         self.gpu_cluster = gpu_cluster
         self.profile_data = profile_data
         self.model_config = model_config
         self.gbs = gbs
         self.norm_layer_duration = self._get_nomalize_layer_duration()
-
+        self.max_bs = max_bs
+        
     def _get_nomalize_layer_duration(self) -> List[float]:
         device_type = next(iter(self.profile_data))
         layers_duration = self.profile_data[device_type]['tp1_bs1']['time']['layer-computes']
@@ -43,7 +44,7 @@ class LayerLoadBalancer:
                 profile_memory = self.profile_data[f'DeviceType.{device_types[0]}'][f'tp{tp_deg}_bs{bs}']['memory']
                 cur_stage_memory_demand += sum(profile_memory[start_layer_id:end_layer_id]) * mem_coef
             else:
-                data_load_balancer = DataLoadBalancer(self.profile_data, self.model_config)
+                data_load_balancer = DataLoadBalancer(self.profile_data, self.model_config, self.max_bs)
                 hetero_bs = data_load_balancer.partition_data(device_types, strategy, gbs // batches)
                 for h_mbs in hetero_bs:
                     comb_h_mbs = [2 ** i for i in range(int(math.log2(h_mbs)) if h_mbs != 0 else 0, -1, -1) if h_mbs & 2 ** i]
@@ -89,7 +90,7 @@ class LayerLoadBalancer:
                 extra_required_capacity += (c_capa - adj_c_capa)
 
         if sum(available_compute_capacity) < extra_required_capacity:
-            print('Even with the reallocation of layers, memory issues persist.')
+            # print('Even with the reallocation of layers, memory issues persist.')
             return None
 
         additional_alloc_sc_capa = [0. for _ in range(len(sc_capa))]
@@ -129,8 +130,8 @@ class LayerLoadBalancer:
             stage_memory_demand = self._get_stage_memory_demand(layer_partition, strategies, plan.device_groups,
                                                                 device_types, plan.gbs, plan.batches)
             memory_exceeded, memory_state = self._detect_out_of_memory(stage_memory_demand, stage_memory_capacity)
-            print(f'layer_partition: {layer_partition}')
-            print(f'stage_memory_demand: {stage_memory_demand}, memory_state: {memory_state}')
+            # print(f'layer_partition: {layer_partition}')
+            # print(f'stage_memory_demand: {stage_memory_demand}, memory_state: {memory_state}')
             if not memory_exceeded:
                 return layer_partition, cur_partition_attempt, memory_state
 
@@ -140,25 +141,26 @@ class LayerLoadBalancer:
                 return None, -1, None
 
             cur_partition_attempt += 1
-            print(f'adj_stage_compute_performance({cur_partition_attempt}): {stage_compute_performance}')
+            # print(f'adj_stage_compute_performance({cur_partition_attempt}): {stage_compute_performance}')
         return None, -1, None
 
 
 class DataLoadBalancer:
-    def __init__(self, profile_data: Dict, model_config):
+    def __init__(self, profile_data: Dict, model_config, max_bs: int):
         self.profile_data = profile_data
         self.model_config = model_config
-
+        self.max_bs = max_bs
     def _get_execution_time(self, device_type: str, key: str) -> float:
         return sum(self.profile_data[f'DeviceType.{device_type}'][key]['time']['layer-computes'])
 
     def partition_data(self, device_types: List[str], intra_strategy: Tuple[int, int], bs: int) -> List[int]:
         dp_deg, tp_deg = intra_strategy
-
+        
         inner_stage_performance = []
         group_size = len(device_types) // dp_deg
         for i in range(dp_deg):
             dp_group = device_types[i * group_size: (i + 1) * group_size]
+            # use bs=1 data to load balance
             profile_cost = self._get_execution_time(dp_group[0], f'tp{tp_deg}_bs1')
             inner_stage_performance.append(1. / profile_cost)
 
@@ -167,6 +169,9 @@ class DataLoadBalancer:
                                            for s_performance in inner_stage_performance]
 
         hetero_bs = [int(bs * c_performance) for c_performance in inner_stage_compute_performance]
+        for i in range(len(hetero_bs)):
+            if hetero_bs[i] > self.max_bs:
+                hetero_bs[i] = self.max_bs
         remainder = bs - sum(hetero_bs)
 
         remainder_ratio = [(bs * c_performance) - int(bs * c_performance)
@@ -176,32 +181,44 @@ class DataLoadBalancer:
         for i in range(remainder):
             hetero_bs[sorted_indices[i]] += 1
 
+        remainder = bs - sum(hetero_bs)
+        while remainder > 0:
+            for i in range(len(hetero_bs)):
+                if hetero_bs[i] < self.max_bs:
+                    hetero_bs[i] += 1
+                    remainder -= 1
+                if remainder == 0:
+                    break
         return hetero_bs
 
 
 class LayerComputeBalancer:
     def __init__(self, num_stage: int, num_layer: int, sc_capa: List[float], lc_demand: List[float], hallucination: int = 7):
         self.num_stage = num_stage
-        self.num_layer = num_layer * hallucination
+        self.num_layer = num_layer * hallucination # Total number of layers, adjusted for hallucination
         self.sc_capa_bak = sc_capa.copy()
-        self.sc_capa = sc_capa
-        self.lc_demand = lc_demand
-        self.expand_lc_demand = []
+        self.sc_capa = sc_capa # stage compute capacity
+        self.lc_demand = lc_demand # Layer compute demands
+        self.expand_lc_demand = [] # Expanded layer compute demands (to account for hallucination)
         for c_demand in lc_demand:
             tmp_demand = c_demand / hallucination
             for i in range(hallucination):
                 self.expand_lc_demand.append(tmp_demand)
 
-        self.hallucination = hallucination
+        self.hallucination = hallucination # 幻觉
 
     def run(self):
+        # Initialize allocation structures
         self._init_allocation()
+        # First pass allocations for forward and backward pass
         self._alloc_first_pass_forward()
         self._alloc_first_pass_backward()
         self._alloc_unassigned_first_pass()
+        # Adjust allocations for real values
         self._alloc_real_value()
+        # Adjust the allocation based on final pass
         self._alloc_first_pass_adjust()
-
+        # Get partition and compute demand for each stage
         partition = self._get_partition()
         sc_demand = self._get_stage_compute_demand(partition)
         return partition, sc_demand
@@ -210,21 +227,24 @@ class LayerComputeBalancer:
         self.lid_alloc_stage = dict()
         for i in range(self.num_stage):
             self.lid_alloc_stage[i] = []
-
+        # keep track of unassigned layers
         self.un_assigned_layer = []
 
     def _alloc_first_pass_forward(self, k: int = 0):
         for stage_id in range(self.num_stage - 1):
             for layer_id in range(k, self.num_layer - 1 - (1 * self.hallucination)):
+                # If the stage can accommodate the layer demand, assign the layer to the stage
                 if self.sc_capa[stage_id] > self.expand_lc_demand[layer_id]:
                     self.sc_capa[stage_id] -= self.expand_lc_demand[layer_id]
                     self.lid_alloc_stage[stage_id].append(layer_id)
                     k = layer_id + 1
                 else:
+                # If the stage can't accommodate, mark the layer as unassigned
                     k = layer_id
                     self.un_assigned_layer.append(layer_id)
                     k = layer_id + 1
                     break
+        # Add any remaining unassigned layers after the loop
         for layer_id in range(k, self.num_layer):
             self.un_assigned_layer.append(layer_id)
 
@@ -232,7 +252,9 @@ class LayerComputeBalancer:
 
     def _alloc_first_pass_backward(self):
         last_stage = self.num_stage - 1
+        # reverse unassigned layers
         _un_assigned_layer = sorted(self.un_assigned_layer.copy(), reverse=True).copy()
+        # Attempt to assign unassigned layers to the last stage
         for layer_id in _un_assigned_layer:
             if len(self.lid_alloc_stage[last_stage]) < self.hallucination:
                 self.sc_capa[last_stage] -= self.expand_lc_demand[layer_id]
@@ -244,15 +266,19 @@ class LayerComputeBalancer:
                 continue
 
             if self.sc_capa[last_stage] > self.expand_lc_demand[layer_id]:
+                # 减少最后一个阶段的计算能力
                 self.sc_capa[last_stage] -= self.expand_lc_demand[layer_id]
                 self.lid_alloc_stage[last_stage].append(layer_id)
                 self.un_assigned_layer.remove(layer_id)
 
     def _alloc_unassigned_first_pass(self):
         def get_proper_stage(d_layer_group: Dict, q: int) -> int:
+            '''
+            d_layer_group: stage->[layer_id]
+            '''
             min_stage_id, max_stage_id = min(list(d_layer_group.keys())), max(list(d_layer_group.keys()))
             min_value, max_value = float('inf'), float('-inf')
-
+            # 找到能容纳这个layer q的stage
             for key in d_layer_group.keys():
                 inner_group = d_layer_group[key]
                 if len(inner_group) == 0:
@@ -265,7 +291,7 @@ class LayerComputeBalancer:
                 if q < cur_min_value and cur_min_value < min_value:
                     max_stage_id = key
                     min_value = cur_min_value
-
+            # 在上述stage里面找到stage compute capacity最大的stage,返回stage id
             stage_id, max_s_capa = None, float('-inf')
             for s_id in range(min_stage_id, max_stage_id + 1):
                 if self.sc_capa[s_id] > max_s_capa:
@@ -273,7 +299,7 @@ class LayerComputeBalancer:
                     stage_id = s_id
 
             return stage_id
-
+        # Sort unassigned layers and try to allocate them to proper stages
         _un_assigned_layer = sorted(self.un_assigned_layer.copy())
         for layer_id in _un_assigned_layer:
             c_layer = self.expand_lc_demand[layer_id]
@@ -289,6 +315,7 @@ class LayerComputeBalancer:
 
     def _alloc_real_value(self):
         lid_alloc_stage = dict()
+        # For each stage, calculate the real value of the layer assignments
         for stage_id in range(self.num_stage):
             real_value_group = [int(layer_id / self.hallucination) for layer_id in self.lid_alloc_stage[stage_id]]
             filtered_real_value = [layer_id for layer_id in real_value_group if
@@ -296,7 +323,7 @@ class LayerComputeBalancer:
             lid_alloc_stage[stage_id] = sorted(list(set(filtered_real_value)))
         self.lid_alloc_stage = lid_alloc_stage
         self.num_layer /= self.hallucination
-
+        # Recalculate stage compute capacities based on actual allocations
         sc_capa = []
         for stage_id in range(len(lid_alloc_stage.keys())):
             if len(lid_alloc_stage[stage_id]):
@@ -306,9 +333,12 @@ class LayerComputeBalancer:
                 sc_capa.append(self.sc_capa_bak[stage_id])
 
         self.sc_capa = sc_capa
-
+    
     def _alloc_first_pass_adjust(self):
+    # Adjust the allocation by moving layers between stages to optimize compute usage
+
         def get_near_max(idx: int, sc_capa: List) -> int:
+            # find the stage with the closest maximum capacity to a given index
             max_idx, min_value = None, float('inf')
             if (idx - 1) >= 0 and sc_capa[idx - 1] < min_value:
                 max_idx = idx - 1
@@ -319,11 +349,12 @@ class LayerComputeBalancer:
             if max_idx is None or len(self.lid_alloc_stage[max_idx]) == 1:
                 max_idx = None
             return max_idx
-
+        # Make a copy of the current allocation and capacity for adjustment
         _opt_sc_capa = self.sc_capa.copy()
         _opt_alloc_stage = copy.deepcopy(self.lid_alloc_stage)
 
         num_search = 0
+        # Iterate to adjust layer allocations between stages
         while True:
             num_search += 1
             _sc_capa_d = [(i, _opt_sc_capa[i]) for i in range(len(_opt_sc_capa))]

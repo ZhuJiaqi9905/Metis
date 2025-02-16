@@ -1,0 +1,2 @@
+rank, cost, node_sequence, device_groups, strategies(dp_deg, tp_deg), batches(number of batch), layer_partition
+1, 1817057.0606770834, (<DeviceType.A10G: 'A10G'>, <DeviceType.L4: 'L4'>, <DeviceType.L40S: 'L40S'>), [16, 16], [(4, 4), (4, 4)], 256, [0, 6, 34]

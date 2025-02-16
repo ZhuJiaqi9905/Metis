@@ -35,6 +35,9 @@ class CostEstimator(ABC):
         return self.profile_data["model"]["batch_generator"] * batches
 
     def _get_dp_cost(self, stage_parameters: List[int], bandwidth:int, dp_deg: int) -> float:
+        '''
+        dp all reduce cost
+        '''
         max_parameter_size = max(stage_parameters)
 
         bandwidth *= 1024 * 1024
@@ -43,6 +46,9 @@ class CostEstimator(ABC):
         return dp_cost
 
     def _get_pp_cost(self, activation_size: int, bandwidth: int) -> float:
+        '''
+        p2p communication cost
+        '''
         bandwidth *= 1024 * 1024
         return activation_size / bandwidth
 
@@ -65,7 +71,7 @@ class CostEstimator(ABC):
         for device_type in device_types:
             nested_keys = [f'DeviceType.{device_type}', f'tp{tp_deg}_bs{batch_size}', 'time', 'fb_sync']
             fb_sync_cost = _get_nested_value(self.profile_data, nested_keys)
-            if not fb_sync_cost:
+            if fb_sync_cost is None:
                 raise KeyError(f"key(fb_sync) not found in profile_data")
             fb_sync_costs.append(fb_sync_cost)
 
@@ -138,9 +144,9 @@ class HomoCostEstimator(CostEstimator):
 
 
 class HeteroCostEstimator(CostEstimator):
-    def __init__(self, profile_data: Dict, model_config: ModelConfig, model_volume, gpu_cluster: GPUCluster):
+    def __init__(self, profile_data: Dict, model_config: ModelConfig, model_volume, gpu_cluster: GPUCluster, max_bs: int):
         super().__init__(profile_data, model_config, model_volume, gpu_cluster)
-
+        self.max_bs = max_bs
     def _get_specific_parameter_update_cost(self, optimizer_time: float, tp_deg: int, num_layers: int) -> float:
         ratio = num_layers / self.model_config.num_layers
         return optimizer_time / tp_deg * ratio
@@ -158,7 +164,7 @@ class HeteroCostEstimator(CostEstimator):
                 continue
 
             device_type = device_types[(len(device_types) // dp_deg) * dp_id]
-            comb_h_mbs = [2 ** i for i in range(int(math.log2(h_mbs)), -1, -1) if h_mbs & 2 ** i]
+            comb_h_mbs = [2 ** i for i in range(int(math.log2(h_mbs)), -1, -1) if h_mbs & 2 ** i] # split h_mbs into 2**i
             inner_dp_cost = 0.
 
             for h_mbs_slice in comb_h_mbs:
@@ -187,9 +193,8 @@ class HeteroCostEstimator(CostEstimator):
             return execution_cost
         # heterogeneous device group
         else:
-            data_load_balancer = DataLoadBalancer(self.profile_data, self.model_config)
+            data_load_balancer = DataLoadBalancer(self.profile_data, self.model_config, self.max_bs)
             hetero_bs = data_load_balancer.partition_data(device_types, intra_strategy, gbs // batches)
-            print(f'data loadbalancer: {hetero_bs}')
 
             execution_costs = self._get_hetero_device_group_execution_time(device_types, intra_strategy, hetero_bs,
                                                                            start_layer_id, end_layer_id)
@@ -197,13 +202,13 @@ class HeteroCostEstimator(CostEstimator):
 
     def get_cost(self, plan: InterStagePlan, strategies: List[Tuple[int, int]], layer_partition: List[int],
                  rank_device_map: Dict[int, str]) -> float:
-        print(f'node_sequence: {plan.node_sequence}, device_group: {plan.device_groups}, num_stage: {plan.num_stage}, '
-              f'batches: {plan.batches}, gbs: {plan.gbs}, strategies: {strategies}, '
-              f'layer_partition: {layer_partition}')
+        # print(f'node_sequence: {plan.node_sequence}, device_group: {plan.device_groups}, num_stage: {plan.num_stage}, '
+        #       f'batches: {plan.batches}, gbs: {plan.gbs}, strategies: {strategies}, '
+        #       f'layer_partition: {layer_partition}')
 
         cluster_bandwidth = HetClusterBandwidth(self.gpu_cluster, plan)
 
-        lens = []
+        lens = [] # execution cost of each stage
         pp_cost, dp_costs, fb_sync_cost, parameter_update_costs = 0., [], 0., []
         for stage_id, intra_strategy in zip(range(plan.num_stage), strategies):
             start_layer_id, end_layer_id = layer_partition[stage_id], layer_partition[stage_id + 1]
@@ -211,13 +216,14 @@ class HeteroCostEstimator(CostEstimator):
             start_rank = sum(plan.device_groups[:stage_id])
             end_rank = sum(plan.device_groups[:stage_id + 1])
             device_types = [rank_device_map[rank] for rank in range(start_rank, end_rank)]
-
+            # get the execution time of a stage
             execution_cost = self._get_execution_cost(device_types, start_layer_id, end_layer_id, intra_strategy, plan.gbs, plan.batches)
             lens.append(execution_cost)
 
             dp_deg, tp_deg = intra_strategy
             mbs = plan.gbs // dp_deg // plan.batches
-            if stage_id == (plan.num_stage - 1):
+            if stage_id == (plan.num_stage - 1): 
+                # the last stage: forward-backward sync cost
                 fb_sync_cost = self._get_fb_sync_cost(device_types, tp_deg, mbs) * plan.batches
             else:
                 #pp communication cost
@@ -235,8 +241,9 @@ class HeteroCostEstimator(CostEstimator):
         execution_cost = ((plan.batches - 1) * max_l) + sum(lens)
         batch_generate_cost = self._get_batch_generate_cost(plan.batches)
 
-        print(f'execution_cost: {execution_cost}, fb_sync_cost: {fb_sync_cost}, '
-              f'parameter_upate_costs: {max(parameter_update_costs)}, dp_cost: {max(dp_costs)}, pp_cost: {pp_cost}')
+        # print(f'execution_cost: {execution_cost}, fb_sync_cost: {fb_sync_cost}, '
+        #       f'parameter_upate_costs: {max(parameter_update_costs)}, dp_cost: {max(dp_costs)}, pp_cost: {pp_cost}')
+        # total time cost
         time_cost = (execution_cost + fb_sync_cost + max(parameter_update_costs) + max(dp_costs) + pp_cost
                      + batch_generate_cost)
 

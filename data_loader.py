@@ -31,7 +31,9 @@ class ProfileDataLoader:
         layer_compute_times = [layer_compute for layer_compute in layer_computes]
         profile_data["time"]["layer-computes"] = layer_compute_times
         forward_backward_time = raw_data['execution_time']['forward_backward_time_ms']
-        profile_data["time"]["fb_sync"] = forward_backward_time - sum(layer_compute_times)
+        # sum of layer_compute_times should less than forward_backward time
+        profile_data["time"]["fb_sync"] = max(forward_backward_time - sum(layer_compute_times), 0)
+        
         profile_data['memory'] = raw_data['execution_memory']['layer_memory_total_mb']
 
         return profile_data

@@ -1,0 +1,26 @@
+{
+    "0.0.0.1": {
+            "instance_type": "A10G",
+            "inter_bandwidth": 1.5,
+            "intra_bandwidth": 4.5,
+            "memory": 24
+        },
+    "0.0.0.2": {
+           "instance_type": "L40S",
+           "inter_bandwidth": 1.5,
+           "intra_bandwidth": 4.5,
+           "memory": 48
+   },
+   "0.0.0.3": {
+              "instance_type": "L4",
+              "inter_bandwidth": 1.5,
+              "intra_bandwidth": 4.5,
+              "memory": 24
+   },
+   "0.0.0.4": {
+    "instance_type": "L40S",
+    "inter_bandwidth": 1.5,
+    "intra_bandwidth": 4.5,
+    "memory": 48
+    }
+}

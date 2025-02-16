@@ -20,12 +20,12 @@ class UniformPlan:
 
 @dataclass
 class InterStagePlan:
-    ns_idx:int
-    node_sequence: List[DeviceType]
+    ns_idx:int # node sequence idx
+    node_sequence: List[DeviceType] # current node sequence
     dg_idx: int
     device_groups: List[int]
     num_stage: int
-    batches: int
+    batches: int # number of micro batch 
     gbs: int
 
 
@@ -101,19 +101,20 @@ class InterStagePlanGenerator:
     def __init__(self, device_types: set, num_devices: int, gbs: int, num_layers: int, variance: float = 0.5,
                  max_permute_len: int = 4):
 
-        self.node_sequences = list(permutations(device_types))
+        self.node_sequences = list(permutations(device_types)) # generate all permutations of different devices
         self.num_devices = num_devices
         self.gbs = gbs
         self.num_layers = num_layers
         self.variance = variance
         self.max_permute_len = max_permute_len
-        self.group_shapes = gen_device_group_shapes(num_devices)
+        self.group_shapes = gen_device_group_shapes(num_devices) #[1, 2, 4, 8, ...]
+        print(f"before gen_dgroups_for_stages_with_variance")
         self.device_groups = gen_dgroups_for_stages_with_variance(num_stages=1,
                                                                   num_gpus=self.num_devices,
                                                                   group_shapes=self.group_shapes,
                                                                   variance=variance,
                                                                   max_permute_len=max_permute_len)
-
+        print(f"device_groups: {self.device_groups}")
         self.curr = InterStagePlan(ns_idx=0, node_sequence=list(self.node_sequences[0]), dg_idx=0,
                                    device_groups=self.device_groups[0], num_stage=1, batches=gbs+1, gbs=gbs)
 
@@ -124,6 +125,9 @@ class InterStagePlanGenerator:
         return batches
 
     def _find_next_dg(self) -> int:
+        '''
+        find next device group index.
+        '''
         dg_idx = self.curr.dg_idx + 1
         return dg_idx
 
@@ -158,6 +162,7 @@ class InterStagePlanGenerator:
             self.curr.batches = self.gbs
 
         if self.curr.dg_idx >= len(self.device_groups):
+            # all combinations of device groups at the current number of stage have been permutated
             self.curr.num_stage = self._find_next_stage_device_groups()
             self.curr.batches = self.gbs
             self.curr.dg_idx = 0
@@ -204,18 +209,19 @@ class IntraStagePlanGenerator:
                 return False
 
             if self._is_valid_strategies(self.curr.strategies):
-                print(f'valid_strategies: {self.curr.strategies}')
+                # print(f'valid_strategies: {self.curr.strategies}')
                 stage_memory_capacity = self.stage_performance.get_device_group_memory_capacity()
+                # 获取每个stage内部用DP, TP切分的性能
                 intra_stage_compute_performance = self.stage_performance.get_intra_stage_compute_performance(
                     self.curr.strategies, self.gbs, self.batches)
-                print(f'stage_memory_capacity: {stage_memory_capacity}')
-                print(f'stage_compute_performance: {intra_stage_compute_performance}')
-
+                # print(f'stage_memory_capacity: {stage_memory_capacity}')
+                # print(f'stage_compute_performance: {intra_stage_compute_performance}')
+                # 根据stage内部的性能调整每个stage的layers数量
                 layer_partition, num_repartition, memory_state = (
                     self.layer_load_balancer.partition_layer(self.inter_stage_plan, self.curr.strategies,
                                                              intra_stage_compute_performance, stage_memory_capacity))
 
-                print(f'layer_partition: {layer_partition}')
+                # print(f'layer_partition: {layer_partition}')
                 if layer_partition:
                     self.curr.layer_partition = layer_partition
                     self.curr.memory_state = memory_state
@@ -240,11 +246,11 @@ class IntraStagePlanGenerator:
             mbs = self.gbs // dp_deg // self.batches
             if mbs == 0 or mbs > self.max_bs:
                 # log for debugging
-                print(f'invalid_strategy: dp_deg({dp_deg}), batches({self.batches}), mbs(0)')
+                # print(f'invalid_strategy: dp_deg({dp_deg}), batches({self.batches}), mbs(0)')
                 return False
             if tp_deg > self.max_tp_degree:
                 # log for debugging
-                print(f'invalid_strategy: tp_deg({tp_deg})')
+                # print(f'invalid_strategy: tp_deg({tp_deg})')
                 return False
         return True
 

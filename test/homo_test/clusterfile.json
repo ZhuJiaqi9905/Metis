@@ -1,9 +1,0 @@
-
-{
-    "127.0.0.1": {
-            "instance_type": "A100",
-            "inter_bandwidth": 10,
-            "intra_bandwidth": 46,
-            "memory": 80
-        }
-}

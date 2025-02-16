@@ -48,6 +48,9 @@ class DeviceType(Enum):
     V100 = "v100"
     P100 = "p100"
     T4 = "t4"
+    A10G = "A10G"
+    L40S = "L40S"
+    L4 = "L4"
 
     @staticmethod
     def from_string(s: str) -> 'DeviceType':

@@ -11,14 +11,15 @@ if TYPE_CHECKING:
 
 
 class StagePerformance:
-    def __init__(self, model_config, profile_data: Dict, gpu_cluster, plan: 'InterStagePlan'):
+    def __init__(self, model_config, profile_data: Dict, gpu_cluster, plan: 'InterStagePlan', max_bs: int):
         self.model_config = model_config
         self.profile_data = profile_data
         self.gpu_cluster = gpu_cluster
         self.plan = plan
         self.rank_device_map = self._get_device_placement(plan.node_sequence)
         self.total_devices = gpu_cluster.get_total_num_devices()
-
+        self.max_bs = max_bs
+        
     def _get_device_placement(self, node_sequence: List[DeviceType]) -> Dict[int, str]:
         rank_device_map = dict()
 
@@ -35,15 +36,32 @@ class StagePerformance:
         return self.rank_device_map
 
     def _get_execution_time(self, device_type: str, key: str) -> float:
+        '''
+        key: tp{}_mbs{}
+        '''
         return sum(self.profile_data[f'DeviceType.{device_type}'][key]['time']['layer-computes'])
 
     def _get_hetero_device_group_execution_time(self, device_types: List[str], intra_strategy: Tuple[int, int],
                                                 hetero_bs: List[int]) -> List[float]:
+        '''
+        返回每个异构DP group的执行时间
+        hetero_bs: 每个DP group的输入的micro batch size
+        '''
         dp_deg, tp_deg = intra_strategy
         execution_costs = []
+        # 如果dp是异构的
         for dp_id, h_mbs in enumerate(hetero_bs):
             device_type = device_types[(len(device_types) // dp_deg) * dp_id]
             comb_h_mbs = [2 ** i for i in range(int(math.log2(h_mbs)) if h_mbs != 0 else 0, -1, -1) if h_mbs & 2 ** i]
+            new_comb_h_mbs = []
+            for h_mbs in comb_h_mbs:
+                if h_mbs > self.max_bs:
+                    while h_mbs > 0:
+                        new_comb_h_mbs.append(self.max_bs)
+                        h_mbs -= self.max_bs
+                else:
+                    new_comb_h_mbs.append(h_mbs)
+            comb_h_mbs = new_comb_h_mbs
             inner_dp_cost = 0.
             for h_mbs_slice in comb_h_mbs:
                 inner_dp_cost += self._get_execution_time(device_type, key=f'tp{tp_deg}_bs{h_mbs_slice}')
@@ -52,6 +70,9 @@ class StagePerformance:
         return execution_costs
 
     def get_intra_stage_compute_performance(self, strategies: List[Tuple[int, int]], gbs: int, batches: int) -> List[float]:
+        '''
+        batches: nums of microbatch
+        '''
         stage_performance = []
         for stage_id, intra_strategy in zip(range(len(self.plan.device_groups)), strategies):
             dp_deg, tp_deg = intra_strategy
@@ -66,13 +87,14 @@ class StagePerformance:
                 hetero_device_group = True
 
             if hetero_device_group:
-                data_load_balancer = DataLoadBalancer(self.profile_data, self.model_config)
+                data_load_balancer = DataLoadBalancer(self.profile_data, self.model_config, self.max_bs)
+                # print(f"before partion_data: bs{ gbs// batches}")
                 hetero_bs = data_load_balancer.partition_data(device_types, intra_strategy, gbs // batches)
-
+                # print(f"after partion_data: hetero_bs{ hetero_bs}")
                 execution_costs = self._get_hetero_device_group_execution_time(device_types, intra_strategy, hetero_bs)
                 cur_performance = 0
                 if max(execution_costs) != 0:
-                    cur_performance = 1. / max(execution_costs)
+                    cur_performance = 1. / max(execution_costs) # performance是时间的倒数
                 stage_performance.append(cur_performance)
             else:
                 device_type = device_types[0]
@@ -92,7 +114,7 @@ class StagePerformance:
 
             device_types = [self.rank_device_map[rank] for rank in list(range(start_rank, end_rank))]
             device_type_dict = dict(Counter(device_types))
-
+            # print(f"{device_type_dict}")
             inner_stage_memory_capacity = []
             for device_type in device_type_dict.keys():
                 inner_stage_memory_capacity.append(

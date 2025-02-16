@@ -46,6 +46,9 @@ class ListElement:
         self.value = value
         self.next = next
     def nth(self, n):
+        '''
+        n start from 0.
+        '''
         o = self
         i = 0
         while i < n and o.next is not None:
@@ -86,3 +89,9 @@ def permutations(multiset):
         j = i.next
         h = t
         yield visit(h)
+
+if __name__ == "__main__":
+    # multiset = [(4, 1), (1, 1), (1, 1), (2, 3)]
+    multiset = [1, 2, 1]
+    for s in permutations(multiset):
+        print(s)
