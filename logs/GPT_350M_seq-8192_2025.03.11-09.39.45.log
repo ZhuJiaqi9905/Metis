@@ -1,0 +1,5 @@
+before gen_dgroups_for_stages_with_variance
+device_groups: [[32]]
+len(costs): 11858
+rank, cost, node_sequence, device_groups, strategies(dp_deg, tp_deg), batches(number of batch), layer_partition
+1, 3444.2522715250648, (<DeviceType.A10G: 'A10G'>, <DeviceType.L4: 'L4'>, <DeviceType.L40S: 'L40S'>), [16, 16], [(16, 1), (16, 1)], 32, [0, 3, 26]
